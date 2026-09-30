@@ -1,0 +1,45 @@
+name: eon-fleet-watch
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe all fleet workers
+        run: |
+          fail=0
+          for u in \
+            "https://eon-edge-brain.eon-sovereign.workers.dev/status" \
+            "https://eon-learn-all.eon-sovereign.workers.dev/status" \
+            "https://eon-mcp.eon-sovereign.workers.dev/status" \
+            "https://eon-p2p-cloud.eon-sovereign.workers.dev/status" \
+            "https://eon-distro.eon-sovereign.workers.dev/status" \
+            "https://sage.eon-sovereign.workers.dev/status" \
+            "https://mind.eon-sovereign.workers.dev/status" \
+            "https://eon-vram.eon-sovereign.workers.dev/status" \
+            "https://eon-matrix-keeper.eon-sovereign.workers.dev/status" \
+            "https://ghost.eon-sovereign.workers.dev/status" \
+            "https://eon-auto-deployer.eon-sovereign.workers.dev/status" \
+            "https://eon-auto-healer.eon-sovereign.workers.dev/health"; do
+            code=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "$u" || echo 000)
+            echo "$u -> $code"
+            [ "$code" = 200 ] || [ "$code" = 401 ] || fail=1
+          done
+          [ "$fail" = 0 ] && echo FLEET_OK || { echo FLEET_FAIL; exit 1; }
+
+      - name: Check delegate queue depth
+        run: |
+          depth=$(curl -s -H "Authorization: Bearer f8805b63bde8f9580b5f393d7883596d2bff835fa8f1fb4fb07b17d0d72a8553" -H "X-Brain-Token: ricossov-eon-8081-2026" "https://eon-p2p-cloud.eon-sovereign.workers.dev/delegate/pending?for=termux-twin" | python3 -c "import json,sys;d=json.load(sys.stdin);print(len(d.get('tasks',[])))" 2>/dev/null || echo 0)
+          echo "delegate queue depth: $depth"
+          [ "$depth" -lt 100 ] || echo "WARNING: queue depth high"
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -s -m 20 -X POST -H 'Content-Type: application/json' \
+            -d '{"text":"eon-fleet-watch: FLEET CHECK FAILED"}' \
+            https://eon-p2p-cloud.eon-sovereign.workers.dev/tg/send
+          echo ALERT_SENT
