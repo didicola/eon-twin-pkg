@@ -17,5 +17,7 @@ pgrep -f "[c]oord_poller.py" >/dev/null || {
   setsid nohup python3 $H/coord_poller.py >> $H/coord_poller.log 2>&1 < /dev/null &
   echo "poller restarted"
 }
+W=$(curl -s -m 8 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null | grep -E "^warp=" | cut -d= -f2)
+[ "$W" = "on" ] || echo "WARN: warp=$W — enable 1.1.1.1 app (privacy mandatory)"
 termux-wake-lock 2>/dev/null
 echo "rejoin done"
